@@ -259,24 +259,31 @@ class Token(types.Token):
         cdef CK_ULONG pin_length
         cdef CK_UTF8CHAR *label
 
-        if token_label is None or so_pin is None:
-            raise ArgumentsBad("Set both `token_label` and `so_pin`")
+        if token_label is None:
+            raise ArgumentsBad("Set `token_label`")
+        elif so_pin is PROTECTED_AUTH:
+            pin = None
+        elif so_pin is not None:
+            pin = so_pin.encode('utf-8')
+        else:
+            raise ArgumentsBad("Set `so_pin`")
 
-        pin = so_pin.encode('utf-8')
         tlabel = token_label.encode('utf-8')
 
-        if pin and tlabel:
-            pin_data = pin
-            pin_length = len(pin)
+        if tlabel is not None:
             label = tlabel
 
-            with nogil:
-                assertRV(_funclist.C_InitToken(slot_id, pin_data, pin_length,
-                                               label))
+            if so_pin is PROTECTED_AUTH:
+                with nogil:
+                    assertRV(_funclist.C_InitToken(slot_id, NULL, 0,
+                                                   label))
+            elif pin is not None:
+                pin_data = pin
+                pin_length = len(pin)
 
-            return True
-
-        return False
+                with nogil:
+                    assertRV(_funclist.C_InitToken(slot_id, pin_data, pin_length,
+                                                   label))
 
     def open(self, rw=False, user_pin=None, so_pin=None):
         cdef CK_SLOT_ID slot_id = self.slot.slot_id
@@ -403,21 +410,68 @@ class Session(types.Session):
         cdef CK_UTF8CHAR *pin_data
         cdef CK_ULONG pin_length
 
-        if user_pin is None:
+        if user_pin is PROTECTED_AUTH:
+            pin = None
+        elif user_pin is not None:
+            pin = user_pin.encode('utf-8')
+        else:
             raise ArgumentsBad("Set `user_pin`")
 
-        pin = user_pin.encode('utf-8')
-
-        if pin:
+        if user_pin is PROTECTED_AUTH:
+            with nogil:
+                assertRV(_funclist.C_InitPIN(handle, NULL, 0))
+        elif pin is not None:
             pin_data = pin
             pin_length = len(pin)
 
             with nogil:
                 assertRV(_funclist.C_InitPIN(handle, pin_data, pin_length))
 
-            return True
+    def change_pin(self, old_user_pin, new_user_pin):
+        cdef CK_OBJECT_HANDLE handle = self._handle
+        cdef CK_UTF8CHAR *old_pin_data
+        cdef CK_ULONG old_pin_length
+        cdef CK_UTF8CHAR *new_pin_data
+        cdef CK_ULONG new_pin_length
 
-        return False
+        if old_user_pin is PROTECTED_AUTH:
+            old_pin = None
+        elif old_user_pin is not None:
+            old_pin = old_user_pin.encode('utf-8')
+        else:
+            raise ArgumentsBad("Set `old_user_pin`")
+
+        if new_user_pin is PROTECTED_AUTH:
+            new_pin = None
+        elif new_user_pin is not None:
+            new_pin = new_user_pin.encode('utf-8')
+        else:
+            raise ArgumentsBad("Set `new_user_pin`")
+
+        if old_user_pin is PROTECTED_AUTH and new_user_pin is PROTECTED_AUTH:
+            with nogil:
+                assertRV(_funclist.C_SetPIN(handle, NULL, 0, NULL, 0))
+        elif old_user_pin is PROTECTED_AUTH and new_pin is not None:
+            new_pin_data = new_pin
+            new_pin_length = len(new_pin)
+            
+            with nogil:
+                assertRV(_funclist.C_SetPIN(handle, NULL, 0, new_pin_data, new_pin_length))
+        elif new_user_pin is PROTECTED_AUTH and old_pin is not None:
+            old_pin_data = old_pin
+            old_pin_length = len(old_pin)
+
+            with nogil:
+                assertRV(_funclist.C_SetPIN(handle, old_pin_data, old_pin_length, NULL, 0))
+        elif old_pin is not None and new_pin is not None:
+            old_pin_data = old_pin
+            old_pin_length = len(old_pin)
+            new_pin_data = new_pin
+            new_pin_length = len(new_pin)
+            
+            with nogil:
+                assertRV(_funclist.C_SetPIN(handle, old_pin_data, old_pin_length,
+                                            new_pin_data, new_pin_length))
 
     def close(self):
         cdef CK_OBJECT_HANDLE handle = self._handle

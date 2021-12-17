@@ -76,14 +76,17 @@ class SlotsAndTokensTests(unittest.TestCase):
     @Only.softhsm2
     def test_init_token(self):
         lib = pkcs11.lib(LIB)
-        tokens = lib.get_tokens()
         temp_token_pin = "bearsbeetsbattlestargalactica"
         temp_token_label = "schrute"
 
+        tokens = lib.get_tokens(token_label=temp_token_label)
+        if len(list(tokens)) != 0:
+            raise AssertionError(temp_token_label + " token found, delete it")
+
+        tokens = lib.get_tokens()
         for token in tokens:
             if pkcs11.TokenFlag.TOKEN_INITIALIZED not in token.flags:
-                self.assertTrue(token.init_token(temp_token_label,
-                                                 temp_token_pin))
+                token.init_token(temp_token_label, temp_token_pin)
                 break
         else:
             raise AssertionError("No Uninitialized token found")
